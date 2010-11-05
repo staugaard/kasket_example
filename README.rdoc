@@ -88,7 +88,7 @@ Let's have a look at the comments:
   Cache write: kasket-0.8.3/comments/version=3476/post_id=1
   => []
 
-Because we have kasket on post_id on Comment, out code looks for the comments in the cache, then the DB.
+Because we have kasket on post_id on Comment, our code looks for the comments in the cache, then the DB.
 
 So reloading the comments should not touch the DB:
 
@@ -158,7 +158,7 @@ Reloading the comments:
   Cache write: kasket-0.8.3/comments/version=3476/post_id=1
   => [#<Comment id: 1, post_id: 1, body: "thanks", created_at: "2010-11-05 04:22:14", updated_at: "2010-11-05 04:22:14">, #<Comment id: 2, post_id: 1, body: "+1", created_at: "2010-11-05 04:22:39", updated_at: "2010-11-05 04:22:39">]
 
-We can see that kasket stores the individual comments in the cache an the a cache entry about the comments with post_id 1.
+We can see that kasket stores the individual comments in the cache plus a cache entry about the comments with post_id 1.
 
 So reloading the comments:
 
