@@ -1,0 +1,174 @@
+OK so this is a very simple example of how kasket works.
+
+We have a very simple initializer in config/initializers/kasket.rb:
+
+  Kasket.setup
+  
+  #this makes sure that stuff like Post.find(3) is cached
+  Post.has_kasket
+  
+  #this makes sure that stuff like post.comments is cached
+  Comment.has_kasket_on :post_id
+
+Let's see it in action:
+
+  ~/code/kasket_example[master]% script/console
+  Loading development environment (Rails 2.3.8)
+  >> Rails.cache.logger = ActiveRecord::Base.logger = Logger.new(STDOUT)
+  => #<Logger:0x103af0b28 @progname=nil, @logdev=#<Logger::LogDevice:0x103af0a88 @filename=nil, @mutex=#<Logger::LogDevice::LogDeviceMutex:0x103af0a38 @mon_owner=nil, @mon_waiting_queue=[], @mon_entering_queue=[], @mon_count=0>, @dev=#<IO:0x1001b4aa8>, @shift_size=nil, @shift_age=nil>, @level=0, @formatter=nil, @default_formatter=#<Logger::Formatter:0x103af0ad8 @datetime_format=nil>>
+
+alright just making sure that we get the log output on STDOUT.
+
+Let's get a post:
+
+  >> Post.find(1)
+  Cache read: kasket-0.8.3/posts/version=3268/id=1
+    Post Load (0.2ms)   SELECT * FROM `posts` WHERE (`posts`.`id` = 1) 
+  Cache write: kasket-0.8.3/posts/version=3268/id=1
+  ActiveRecord::RecordNotFound: Couldn't find Post with ID=1
+    from /Users/staugaard/.rvm/gems/ree-1.8.7-2010.02/gems/activerecord-2.3.8/lib/active_record/base.rb:1616:in `find_one'
+    from /Users/staugaard/.rvm/gems/ree-1.8.7-2010.02/gems/activerecord-2.3.8/lib/active_record/base.rb:1599:in `find_from_ids'
+    from /Users/staugaard/.rvm/gems/ree-1.8.7-2010.02/gems/activerecord-2.3.8/lib/active_record/base.rb:619:in `find'
+    from (irb):2
+
+Ok there is no post with id 1 but look how our code was looking for it in the cache, then in the DB, and then writing the result
+back in the cache.
+
+Let's try that again shall we:
+
+  >> Post.find(1)
+  Cache read: kasket-0.8.3/posts/version=3268/id=1
+  ActiveRecord::RecordNotFound: Couldn't find Post with ID=1
+    from /Users/staugaard/.rvm/gems/ree-1.8.7-2010.02/gems/activerecord-2.3.8/lib/active_record/base.rb:1616:in `find_one'
+    from /Users/staugaard/.rvm/gems/ree-1.8.7-2010.02/gems/activerecord-2.3.8/lib/active_record/base.rb:1599:in `find_from_ids'
+    from /Users/staugaard/.rvm/gems/ree-1.8.7-2010.02/gems/activerecord-2.3.8/lib/active_record/base.rb:619:in `find'
+    from (irb):3
+
+This time without touching the DB!
+
+OK, let's create a post then:
+
+  >> Post.create(:title => 'first post', :body => 'great body')
+    SQL (3.1ms)   BEGIN
+    Post Create (0.3ms)   INSERT INTO `posts` (`created_at`, `title`, `body`, `updated_at`) VALUES('2010-11-05 04:20:57', 'first post', 'great body', '2010-11-05 04:20:57')
+  Cache delete: kasket-0.8.3/posts/version=3268/id=1
+  Cache delete: kasket-0.8.3/posts/version=3268/id=NULL
+    SQL (0.6ms)   COMMIT
+  => #<Post id: 1, title: "first post", body: "great body", created_at: "2010-11-05 04:20:57", updated_at: "2010-11-05 04:20:57">
+
+So a post is created just like always, but see how kasket was making sure to clear some potential cache entries.
+
+Let's try looking that up:
+
+  >> post = Post.find(1)
+  Cache read: kasket-0.8.3/posts/version=3268/id=1
+    Post Load (0.5ms)   SELECT * FROM `posts` WHERE (`posts`.`id` = 1) 
+  Cache write: kasket-0.8.3/posts/version=3268/id=1
+  => #<Post id: 1, title: "first post", body: "great body", created_at: "2010-11-05 04:20:57", updated_at: "2010-11-05 04:20:57">
+
+Just like the first time our code tries to find the post in the cache, then in the DB and then storing the result in the cache.
+
+And one more time just to be sure:
+
+  >> post = Post.find(1)
+  Cache read: kasket-0.8.3/posts/version=3268/id=1
+  => #<Post id: 1, title: "first post", body: "great body", created_at: "2010-11-05 04:20:57", updated_at: "2010-11-05 04:20:57">
+
+Sure enough, there is our post from the cache.
+
+Let's have a look at the comments:
+
+  >> post.comments
+  Cache read: kasket-0.8.3/comments/version=3476/post_id=1
+    Comment Load (0.6ms)   SELECT * FROM `comments` WHERE (`comments`.post_id = 1) 
+  Cache write: kasket-0.8.3/comments/version=3476/post_id=1
+  => []
+
+Because we have kasket on post_id on Comment, out code looks for the comments in the cache, then the DB.
+
+So reloading the comments should not touch the DB:
+
+  >> post.comments.reload
+  Cache read: kasket-0.8.3/comments/version=3476/post_id=1
+  => []
+
+This is almost going too well!
+
+Let's create some comments:
+  
+  >> post.comments.create(:body => 'thanks')
+    SQL (0.2ms)   BEGIN
+    Comment Create (0.3ms)   INSERT INTO `comments` (`created_at`, `body`, `updated_at`, `post_id`) VALUES('2010-11-05 04:22:14', 'thanks', '2010-11-05 04:22:14', 1)
+  Cache delete: kasket-0.8.3/comments/version=3476/id=1
+  Cache delete: kasket-0.8.3/comments/version=3476/id=NULL
+  Cache delete: kasket-0.8.3/comments/version=3476/post_id=1
+  Cache delete: kasket-0.8.3/comments/version=3476/post_id=1/first
+  Cache delete: kasket-0.8.3/comments/version=3476/post_id=NULL
+  Cache delete: kasket-0.8.3/comments/version=3476/post_id=NULL/first
+    SQL (0.5ms)   COMMIT
+  => #<Comment id: 1, post_id: 1, body: "thanks", created_at: "2010-11-05 04:22:14", updated_at: "2010-11-05 04:22:14">
+
+Comment created, and kasket did the necessary cleanup of the cache.
+
+Let's load those comments:
+
+  >> post.comments.reload
+  Cache read: kasket-0.8.3/comments/version=3476/post_id=1
+    Comment Load (0.4ms)   SELECT * FROM `comments` WHERE (`comments`.post_id = 1) 
+  Cache write: kasket-0.8.3/comments/version=3476/post_id=1
+  => [#<Comment id: 1, post_id: 1, body: "thanks", created_at: "2010-11-05 04:22:14", updated_at: "2010-11-05 04:22:14">]
+
+We got those comments from the DB.
+
+And again:
+
+  >> post.comments.reload
+  Cache read: kasket-0.8.3/comments/version=3476/post_id=1
+  => [#<Comment id: 1, post_id: 1, body: "thanks", created_at: "2010-11-05 04:22:14", updated_at: "2010-11-05 04:22:14">]
+
+Now we got them from the cache.
+
+... and another comment:
+
+  >> post.comments.create(:body => '+1')
+    SQL (0.2ms)   BEGIN
+    Comment Create (0.3ms)   INSERT INTO `comments` (`created_at`, `body`, `updated_at`, `post_id`) VALUES('2010-11-05 04:22:39', '+1', '2010-11-05 04:22:39', 1)
+  Cache delete: kasket-0.8.3/comments/version=3476/id=2
+  Cache delete: kasket-0.8.3/comments/version=3476/id=NULL
+  Cache delete: kasket-0.8.3/comments/version=3476/post_id=1
+  Cache delete: kasket-0.8.3/comments/version=3476/post_id=1/first
+  Cache delete: kasket-0.8.3/comments/version=3476/post_id=NULL
+  Cache delete: kasket-0.8.3/comments/version=3476/post_id=NULL/first
+    SQL (0.6ms)   COMMIT
+  => #<Comment id: 2, post_id: 1, body: "+1", created_at: "2010-11-05 04:22:39", updated_at: "2010-11-05 04:22:39">
+
+Created, and cleanup happening again.
+
+Reloading the comments:
+
+  >> post.comments.reload
+  Cache read: kasket-0.8.3/comments/version=3476/post_id=1
+    Comment Load (0.4ms)   SELECT * FROM `comments` WHERE (`comments`.post_id = 1) 
+  Cache write: kasket-0.8.3/comments/version=3476/id=1
+  Cache write: kasket-0.8.3/comments/version=3476/id=2
+  Cache write: kasket-0.8.3/comments/version=3476/post_id=1
+  => [#<Comment id: 1, post_id: 1, body: "thanks", created_at: "2010-11-05 04:22:14", updated_at: "2010-11-05 04:22:14">, #<Comment id: 2, post_id: 1, body: "+1", created_at: "2010-11-05 04:22:39", updated_at: "2010-11-05 04:22:39">]
+
+We can see that kasket stores the individual comments in the cache an the a cache entry about the comments with post_id 1.
+
+So reloading the comments:
+
+  >> post.comments.reload
+  Cache read: kasket-0.8.3/comments/version=3476/post_id=1
+  Cache read: kasket-0.8.3/comments/version=3476/id=1
+  Cache read: kasket-0.8.3/comments/version=3476/id=2
+  => [#<Comment id: 1, post_id: 1, body: "thanks", created_at: "2010-11-05 04:22:14", updated_at: "2010-11-05 04:22:14">, #<Comment id: 2, post_id: 1, body: "+1", created_at: "2010-11-05 04:22:39", updated_at: "2010-11-05 04:22:39">]
+
+Just reads those three cache entries.
+
+Enough already:
+
+  >> exit
+  ~/code/kasket_example[master]%
+
+Thanks
