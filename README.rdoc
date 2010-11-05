@@ -2,6 +2,8 @@
 
 OK so this is a very simple example of how kasket works.
 
+All I did to setup and configure kasket was in this commit: https://github.com/staugaard/kasket_example/commit/97ccc5d25755dacb9c478851c5e473d7296a530d
+
 We have a very simple initializer in config/initializers/kasket.rb:
 
   Kasket.setup
