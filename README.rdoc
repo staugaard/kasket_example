@@ -1,3 +1,5 @@
+= A Simple Kasket Example
+
 OK so this is a very simple example of how kasket works.
 
 We have a very simple initializer in config/initializers/kasket.rb:
